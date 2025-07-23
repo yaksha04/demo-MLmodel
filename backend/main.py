@@ -6,7 +6,7 @@ import hashlib
 
 app = FastAPI()
 
-# Allow Streamlit frontend
+# Allow Streamlit frontend to access this backend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -14,39 +14,59 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
-# Point to the MLmodel directory one level above
+# Base path points one level up from the backend folder
 BASE_PATH = Path(__file__).resolve().parent.parent
 current_hash = None
 
+# ✅ Compute hash from all id.txt files
 def compute_model_hash():
     hash_md5 = hashlib.md5()
     for file in sorted(BASE_PATH.rglob("id.txt")):
         hash_md5.update(file.read_bytes())
     return hash_md5.hexdigest()
 
+# ✅ List top-level commodity directories (e.g., apple, mango)
 @app.get("/commodities")
 def list_commodities() -> List[str]:
-    return sorted([d.name for d in BASE_PATH.iterdir()
-                   if d.is_dir() and d.name not in ["backend", "frontend"]])
+    return sorted([
+        d.name for d in BASE_PATH.iterdir()
+if d.is_dir()
+        and not d.name.startswith(".")               # 🔒 exclude hidden dirs like .git
+        and d.name not in {"backend", "frontend"}    # 🔒 exclude app code folders
+    ])
 
+# ✅ List versions inside a commodity (e.g., 001, 002)
 @app.get("/versions/{commodity}")
 def list_versions(commodity: str) -> List[str]:
     path = BASE_PATH / commodity
-    return sorted([d.name for d in path.iterdir() if d.is_dir()])
+    if not path.exists():
+        return []
+    return sorted([
+        d.name for d in path.iterdir()
+        if d.is_dir() and not d.name.startswith(".")
+    ])
 
+# ✅ List layers inside a version (e.g., L1, L2)
 @app.get("/layers/{commodity}/{version}")
 def list_layers(commodity: str, version: str) -> List[str]:
     path = BASE_PATH / commodity / version
-    return sorted([d.name for d in path.iterdir() if d.is_dir()])
+    if not path.exists():
+        return []
+    return sorted([
+        d.name for d in path.iterdir()
+        if d.is_dir() and not d.name.startswith(".")
+    ])
 
+# ✅ Read the content of id.txt
 @app.get("/id/{commodity}/{version}/{layer}")
 def get_id(commodity: str, version: str, layer: str):
-    file_path = BASE_PATH / commodity / version / layer / "id.txt"
+file_path = BASE_PATH / commodity / version / layer / "id.txt"
     if file_path.exists():
         return {"content": file_path.read_text()}
     else:
         return {"error": "id.txt not found"}
 
+# ✅ Return current hash of all id.txt files + change status
 @app.get("/model/hash")
 def get_model_hash():
     global current_hash
